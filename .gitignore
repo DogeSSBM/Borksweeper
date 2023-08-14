@@ -1,3 +1,7 @@
+*.tags
+*.out
+*.swoop
+
 # Prerequisites
 *.d
 
