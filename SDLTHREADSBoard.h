@@ -1,0 +1,266 @@
+#ifndef BOARD_H
+#define BOARD_H
+
+Board boardDefault(void)
+{
+    Board board = {
+        .winLen = getWindowLen(),
+        .len = iC(30, 16),
+        .scale = tileScale(board.winLen, board.len),
+        .off = tileOffset(board.winLen, board.len, board.scale),
+        .numBombs = 99,
+        .lDown = iC(-1,-1),
+        .rDown = iC(-1,-1),
+        .state = BS_FIRST,
+        .type = B_SAT
+    };
+    return board;
+}
+
+void boardCpy(Board *dst, Board *src)
+{
+    assertExpr(dst->tile != NULL && src->tile != NULL);
+    assertExpr(coordSame(dst->len, src->len));
+    for(int x = 0; x < dst->len.x; x++){
+        for(int y = 0; y < dst->len.y; y++){
+            dst->tile[x][y] = src->tile[x][y];
+        }
+    }
+}
+
+void boardFree(Board *board)
+{
+    assertExpr(board->tile != NULL);
+    printf("Freeing board: {%i,%i}\n", board->len.x, board->len.y);
+    for(int x = 0; x < board->len.x; x++)
+        free(board->tile[x]);
+    free(board->tile);
+
+    board->tile = NULL;
+    printf("Free'd board: {%i,%i}\n", board->len.x, board->len.y);
+}
+
+void boardAlloc(Board *board)
+{
+    assertExprMsg(!board->tile, "Tried to boardAlloc when board->tile was not NULL");
+    assertExprMsg(coordMin(board->len) >= 4, "Cannot boardAlloc anything < {4,4}, board->len: {%i,%i}\n", board->len.x, board->len.y);
+
+    // printf("Allocating new board: {%i,%i}\n", board->len.x, board->len.y);
+    board->tile = calloc(board->len.x, sizeof(Tile*));
+    for(int x = 0; x < board->len.x; x++)
+        board->tile[x] = calloc(board->len.y, sizeof(Tile));
+}
+
+bool validTilePos(const Coord pos, const Length bounds)
+{
+    return inBound(pos.x, 0, bounds.x) && inBound(pos.y, 0, bounds.y);
+}
+
+uint adjBombs(const Board *board, const Coord pos)
+{
+    uint count = 0;
+    for(int yo = -1; yo <= 1; yo++){
+        for(int xo = -1; xo <= 1; xo++){
+            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+            count += validTilePos(adj, board->len) && !coordSame(pos, adj) && board->tile[adj.x][adj.y].isBomb;
+        }
+    }
+    return count;
+}
+
+uint adjTileState(const Board *board, const Coord pos, const TileState state)
+{
+    uint count = 0;
+    for(int yo = -1; yo <= 1; yo++){
+        for(int xo = -1; xo <= 1; xo++){
+            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+            count += (
+                !coordSame(pos, adj) &&
+                validTilePos(adj, board->len) &&
+                board->tile[adj.x][adj.y].state == state
+            );
+        }
+    }
+    return count;
+}
+
+uint floodFill(Board *board, const Coord pos)
+{
+    if(!validTilePos(pos, board->len) || board->tile[pos.x][pos.y].state != S_TILE)
+        return 0;
+    if(board->tile[pos.x][pos.y].isBomb){
+        printBoard(board, false);
+        printf("\n");
+        printBoard(board, true);
+        printf("\n");
+        printDecalsPos(board, pos);
+        panic("tried to prop bomb at %i,%i\n", pos.x, pos.y);
+    }
+    board->tile[pos.x][pos.y].state = S_NUM;
+    if(board->tile[pos.x][pos.y].num > 0)
+        return 1;
+
+    uint cleared = 1;
+    for(int yo = -1; yo <= 1; yo++){
+        for(int xo = -1; xo <= 1; xo++){
+            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+            if(
+                !coordSame(pos, adj) &&
+                validTilePos(adj, board->len) &&
+                board->tile[adj.x][adj.y].state == S_TILE
+            )
+                cleared += floodFill(board, adj);
+        }
+    }
+
+    return cleared;
+}
+
+uint floodAdj(Board *board, const Coord pos)
+{
+    uint count = 0;
+    for(int yo = -1; yo <= 1; yo++){
+        for(int xo = -1; xo <= 1; xo++){
+            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+            if(
+                !coordSame(pos, adj) &&
+                validTilePos(adj, board->len) &&
+                board->tile[adj.x][adj.y].state == S_TILE
+            ){
+                if(board->tile[adj.x][adj.y].isBomb){
+                    board->state = BS_MENU;
+                    return 0;
+                }
+                count += floodFill(board, adj);
+            }
+        }
+    }
+    return count;
+}
+
+void boardCalcNums(Board *board)
+{
+    for(int y = 0; y < board->len.y; y++)
+        for(int x = 0; x < board->len.x; x++)
+            board->tile[x][y].num = adjBombs(board, iC(x,y));
+}
+
+void boardResetFirstClick(Board *board)
+{
+    assertExprMsg(board->tile, "Must alloc board->tile before resetting to first click state.");
+    for(int y = 0; y < board->len.y; y++){
+        for(int x = 0; x < board->len.x; x++){
+            board->tile[x][y].state = S_TILE;
+            board->tile[x][y].isBomb = false;
+            board->tile[x][y].num = 0;
+        }
+    }
+    board->state = BS_FIRST;
+}
+
+void boardResetTileStates(Board *board)
+{
+    assertExprMsg(board->tile, "Must alloc board->tile before resetting tiles.");
+    for(int y = 0; y < board->len.y; y++)
+        for(int x = 0; x < board->len.x; x++)
+            board->tile[x][y].state = S_TILE;
+}
+
+uint boardRemaining(Board *board)
+{
+    uint total = 0;
+    for(int y = 0; y < board->len.y; y++)
+        for(int x = 0; x < board->len.x; x++)
+            total += board->tile[x][y].state != S_NUM;
+    return total - board->numBombs;
+}
+
+void boardRngBombs(Board *board)
+{
+    const Coord tpos = winTilePos(board->lDown, board->scale, board->off);
+    assertExpr(validTilePos(tpos, board->len));
+    boardResetFirstClick(board);
+    for(uint i = 0; i < board->numBombs; i++){
+        Coord pos;
+        do{
+            pos.x = rand()%board->len.x;
+            pos.y = rand()%board->len.y;
+        }while(
+            board->tile[pos.x][pos.y].isBomb || (
+                inBound(pos.x, tpos.x-1,tpos.x+2) &&
+                inBound(pos.y, tpos.y-1,tpos.y+2)
+            )
+        );
+        board->tile[pos.x][pos.y].isBomb = true;
+    }
+}
+
+AtomicInt done;
+
+int boardPlaceBombsThread(void *voidData)
+{
+    ThreadData *data = voidData;
+    Board *board = &(data->board);
+    for(ull i = 0; i < 100000; i++){
+        if(SDL_AtomicGet(&done) != -1){
+            return 0;
+        }
+        boardRngBombs(board);
+        boardCalcNums(board);
+        floodFill(board, data->tpos);
+        if(solve(board)){
+            SDL_AtomicSet(&done, data->index);
+            data->board = *board;
+            return (int)i;
+        }
+    }
+    return 0;
+}
+
+bool boardPlaceBombs(Board *board)
+{
+    Coord tpos = winTilePos(board->lDown, board->scale, board->off);
+    printf("placing bombs\n");
+    assertExpr(board->state == BS_FIRST);
+    assertExpr(validTilePos(tpos, board->len));
+    for(Direction d = 0; d < 4; d++)
+        if(!validTilePos(coordShift(tpos, d, 1), board->len))
+            tpos = coordShift(tpos, dirINV(d), 1);
+    uint ticks = getTicks();
+    if(board->type != B_RNG){
+        SDL_AtomicSet(&done, -1);
+        ThreadData data[4] = {0};
+        SDL_Thread* thread[4] = {0};
+        for(int i = 0; i < 4; i++){
+            data[i].board = *board;
+            boardAlloc(&(data[i].board));
+            boardResetFirstClick(&(data[i].board));
+            data[i].tpos = tpos;
+            data[i].index = i;
+            thread[i] = SDL_CreateThread(boardPlaceBombsThread, "threadFunc", &(data[i]));
+        }
+        int tries[4] = {0};
+        for(int i = 0; i < 4; i++)
+            SDL_WaitThread(thread[i], &(tries[i]));
+        ticks = getTicks()-ticks;
+        printf("Solved try: %i thread: %i\n", tries[SDL_AtomicGet(&done)], SDL_AtomicGet(&done));
+        printf("In %isec\n", ticks/1000);
+        boardAlloc(board);
+        boardCpy(board, &(data[SDL_AtomicGet(&done)].board));
+        for(int i = 0; i < 4; i++)
+            boardFree(&(data[i].board));
+    }else{
+        boardAlloc(board);
+        boardResetFirstClick(board);
+    }
+
+    printBoard(board, false);
+    printBoard(board, true);
+    boardResetTileStates(board);
+    floodFill(board, tpos);
+    board->state = BS_PLAY;
+    printf("Tiles remaining: %u\n", boardRemaining(board));
+    return true;
+}
+
+#endif /* end of include guard: BOARD_H */
