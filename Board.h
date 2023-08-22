@@ -231,7 +231,7 @@ void* boardPlaceBombsThread(void *voidData)
             }
         }
         n++;
-        printf("Thread[%i]: 50x%llu\n", data->index, n);
+        printf("Thread[%i]: %llu\n", data->index, n*50);
     }while(atomic_load(done) == -1);
     return NULL;
 }
