@@ -287,12 +287,20 @@ void* boardPlaceBombsThread(void *voidData)
     return NULL;
 }
 
+void signal_handler(int signal)
+{
+    (void)signal;
+    atomic_store(done, -2);
+}
+
 bool boardPlaceBombs(Board *board)
 {
     const Length len = board->len;
     _Atomic int d;
     done = &d;
     atomic_init(done, -1);
+    signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
     Coord tpos = winTilePos(board->lDown, board->scale, board->off);
     assertExpr(validTilePos(tpos, board->len));
     printf("placing bombs\n");
@@ -316,7 +324,11 @@ bool boardPlaceBombs(Board *board)
         for(int i = 0; i < NUM_THREADS; i++){
             pthread_join(thread[i], NULL);
         }
+        signal(SIGTERM, SIG_DFL);
+        signal(SIGINT, SIG_DFL);
         const int index = atomic_load(done);
+        if(index == -2)
+            exit(EXIT_SUCCESS);
         printf("index: %i\n", index);
         ticks = getTicks()-ticks;
         printf("In %isec\n", ticks/1000);
@@ -331,8 +343,8 @@ bool boardPlaceBombs(Board *board)
         boardResetFirstClick(board);
     }
     printBoardInfo(board);
-    printBoard(board, false);
-    printBoard(board, true);
+    // printBoard(board, false);
+    // printBoard(board, true);
     boardResetTileStates(board);
     floodFill(board, tpos);
     board->state = BS_PLAY;

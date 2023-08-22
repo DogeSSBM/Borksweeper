@@ -164,6 +164,7 @@ void boardUpdate(Board *board)
             if(boardRemaining(board) == 0){
                 printf("You win!\n");
                 boardFree(board);
+                exit(EXIT_SUCCESS);
                 board->state = BS_FIRST;
             }
             break;
