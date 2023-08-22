@@ -123,6 +123,29 @@ uint floodFill(Board *board, const Coord pos)
     return cleared;
 }
 
+void floodFillFast(Board *board, const Coord pos)
+{
+    board->tile[pos.x][pos.y].state = S_NUM;
+
+    for(int yo = -1; yo <= 1; yo++){
+        for(int xo = -1; xo <= 1; xo++){
+            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+            if(
+                (pos.x != adj.x || pos.y != adj.y) &&
+                adj.y >= 0 && adj.y < board->len.y &&
+                adj.x >= 0 && adj.x < board->len.x &&
+                board->tile[adj.x][adj.y].state == S_TILE
+            ){
+                if(board->tile[adj.x][adj.y].num > 0){
+                    board->tile[adj.x][adj.y].state = S_NUM;
+                }else{
+                    floodFillFast(board, adj);
+                }
+            }
+        }
+    }
+}
+
 uint floodAdj(Board *board, const Coord pos)
 {
     uint count = 0;
@@ -216,12 +239,41 @@ void* boardPlaceBombsThread(void *voidData)
 {
     ThreadData *data = voidData;
     Board *board = &(data->board);
+    const Coord tpos = data->tpos;
+    Tile **tile = board->tile;
     ull n = 0;
     do{
         for(uint i = 0; i < 50; i++){
-            boardRngBombs(board, data->tpos);
-            boardCalcNums(board);
-            floodFill(board, data->tpos);
+            for(int x = 0; x < board->len.x; x++)
+                memset(tile[x], 0, board->len.y * sizeof(Tile));
+            board->state = BS_FIRST;
+            for(uint i = 0; i < board->numBombs; i++){
+                Coord pos;
+                do{
+                    pos.x = rand()%board->len.x;
+                    pos.y = rand()%board->len.y;
+                }while(tile[pos.x][pos.y].isBomb || (
+                        pos.x >= tpos.x-1 && pos.x < tpos.x+2 &&
+                        pos.y >= tpos.y-1 && pos.y < tpos.y+2
+                ));
+                tile[pos.x][pos.y].isBomb = true;
+            }
+            for(int y = 0; y < board->len.y; y++){
+                for(int x = 0; x < board->len.x; x++){
+                    const Coord pos = {.x = x, .y = y};
+                    for(int yo = -1; yo <= 1; yo++){
+                        for(int xo = -1; xo <= 1; xo++){
+                            const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
+                            tile[x][y].num += (
+                                (adj.x != pos.x || adj.y != pos.y) &&
+                                adj.x >= 0 && adj.x < board->len.x &&
+                                adj.y >= 0 && adj.y < board->len.y &&
+                                tile[adj.x][adj.y].isBomb);
+                        }
+                    }
+                }
+            }
+            floodFillFast(board, tpos);
             if(solve(board)){
                 if(atomic_load(done) != -1)
                     return NULL;
