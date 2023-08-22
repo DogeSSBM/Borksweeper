@@ -126,7 +126,6 @@ uint floodFill(Board *board, const Coord pos)
 void floodFillFast(Board *board, const Coord pos)
 {
     board->tile[pos.x][pos.y].state = S_NUM;
-
     for(int yo = -1; yo <= 1; yo++){
         for(int xo = -1; xo <= 1; xo++){
             const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
