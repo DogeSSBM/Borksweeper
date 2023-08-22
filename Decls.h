@@ -23,7 +23,7 @@ uint floodFill(Board *, const Coord);
 void boardCalcNums(Board *);
 void boardResetFirstClick(Board *);
 uint boardRemaining(Board *);
-void boardRngBombs(Board *);
+void boardRngBombs(Board *, const Coord);
 bool boardPlaceBombs(Board *);
 
 // Draw.h

@@ -99,6 +99,7 @@ typedef struct{
     Board board;
     Coord tpos;
     int index;
+    // volatile _Atomic int *done;
 }ThreadData;
 
 #endif /* end of include guard: TYPES_H */

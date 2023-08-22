@@ -20,6 +20,8 @@ Board boardDefault(void)
 void boardCpy(Board *dst, Board *src)
 {
     assertExpr(dst->tile != NULL && src->tile != NULL);
+    if(!coordSame(dst->len, src->len))
+        printf("dst->len: (%2i,%2i) src->len: (%2i,%2i)\n", dst->len.x, dst->len.y, src->len.x, src->len.y);
     assertExpr(coordSame(dst->len, src->len));
     for(int x = 0; x < dst->len.x; x++){
         for(int y = 0; y < dst->len.y; y++){
@@ -52,6 +54,7 @@ Tile** boardTileAlloc(const Length len)
 void boardAlloc(Board *board)
 {
     assertExprMsg(!board->tile, "Tried to boardAlloc when board->tile was not NULL");
+    printf("allocating: (%2i,%2i)\n", board->len.x, board->len.y);
     board->tile = boardTileAlloc(board->len);
 }
 
@@ -149,7 +152,7 @@ void boardCalcNums(Board *board)
             board->tile[x][y].num = adjBombs(board, iC(x,y));
 }
 
-void boardResetFirstClick(Board *board)
+void old_boardResetFirstClick(Board *board)
 {
     assertExprMsg(board->tile, "Must alloc board->tile before resetting to first click state.");
     for(int y = 0; y < board->len.y; y++){
@@ -159,6 +162,14 @@ void boardResetFirstClick(Board *board)
             board->tile[x][y].num = 0;
         }
     }
+    board->state = BS_FIRST;
+}
+
+void boardResetFirstClick(Board *board)
+{
+    assertExprMsg(board->tile, "Must alloc board->tile before resetting to first click state.");
+    for(int x = 0; x < board->len.x; x++)
+        memset(board->tile[x], 0, board->len.y * sizeof(Tile));
     board->state = BS_FIRST;
 }
 
@@ -179,11 +190,11 @@ uint boardRemaining(Board *board)
     return total - board->numBombs;
 }
 
-void boardRngBombs(Board *board)
+void boardRngBombs(Board *board, const Coord tpos)
 {
-    const Coord tpos = winTilePos(board->lDown, board->scale, board->off);
-    assertExpr(validTilePos(tpos, board->len));
-    boardResetFirstClick(board);
+    for(int x = 0; x < board->len.x; x++)
+        memset(board->tile[x], 0, board->len.y * sizeof(Tile));
+    board->state = BS_FIRST;
     for(uint i = 0; i < board->numBombs; i++){
         Coord pos;
         do{
@@ -199,61 +210,71 @@ void boardRngBombs(Board *board)
     }
 }
 
-_Atomic int done;
+volatile _Atomic int *done;
 
 void* boardPlaceBombsThread(void *voidData)
 {
     ThreadData *data = voidData;
     Board *board = &(data->board);
-    for(ull i = 0; i < 100000; i++){
-        if(atomic_load(&done) != -1){
-            return NULL;
+    ull n = 0;
+    do{
+        for(uint i = 0; i < 50; i++){
+            boardRngBombs(board, data->tpos);
+            boardCalcNums(board);
+            floodFill(board, data->tpos);
+            if(solve(board)){
+                if(atomic_load(done) != -1)
+                    return NULL;
+                atomic_store(done, data->index);
+                printf("Storing %i\n", data->index);
+                return NULL;
+            }
         }
-        boardRngBombs(board);
-        boardCalcNums(board);
-        floodFill(board, data->tpos);
-        if(solve(board)){
-            atomic_store(&done, data->index);
-            data->board = *board;
-            return NULL;
-        }
-    }
-    return 0;
+        n++;
+        printf("Thread[%i]: 50x%llu\n", data->index, n);
+    }while(atomic_load(done) == -1);
+    return NULL;
 }
 
 bool boardPlaceBombs(Board *board)
 {
+    const Length len = board->len;
+    _Atomic int d;
+    done = &d;
+    atomic_init(done, -1);
     Coord tpos = winTilePos(board->lDown, board->scale, board->off);
+    assertExpr(validTilePos(tpos, board->len));
     printf("placing bombs\n");
     assertExpr(board->state == BS_FIRST);
-    assertExpr(validTilePos(tpos, board->len));
     for(Direction d = 0; d < 4; d++)
         if(!validTilePos(coordShift(tpos, d, 1), board->len))
             tpos = coordShift(tpos, dirINV(d), 1);
     uint ticks = getTicks();
     if(board->type != B_RNG){
-        atomic_init(&done, -1);
         ThreadData data[NUM_THREADS] = {0};
         pthread_t thread[NUM_THREADS] = {0};
         for(int i = 0; i < NUM_THREADS; i++){
             data[i].board = *board;
+            data[i].board.len = board->len;
             boardAlloc(&(data[i].board));
             boardResetFirstClick(&(data[i].board));
             data[i].tpos = tpos;
             data[i].index = i;
             pthread_create(&(thread[i]), NULL, boardPlaceBombsThread, &(data[i]));
         }
-        // int tries[NUM_THREADS] = {0};
         for(int i = 0; i < NUM_THREADS; i++){
             pthread_join(thread[i], NULL);
         }
+        const int index = atomic_load(done);
+        printf("index: %i\n", index);
         ticks = getTicks()-ticks;
-        // printf("Solved try: %i thread: %i\n", tries[SDL_AtomicGet(&done)], SDL_AtomicGet(&done));
         printf("In %isec\n", ticks/1000);
+        board->len = len;
         boardAlloc(board);
-        boardCpy(board, &(data[atomic_load(&done)].board));
-        for(int i = 0; i < NUM_THREADS; i++)
+        boardCpy(board, &(data[index].board));
+        for(int i = 0; i < NUM_THREADS; i++){
             boardFree(&(data[i].board));
+        }
     }else{
         boardAlloc(board);
         boardResetFirstClick(board);
