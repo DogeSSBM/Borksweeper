@@ -138,6 +138,8 @@ Board boardLoad(const uint saveNum)
         panic("Expected EOF at end of line %i\n", board.len.y);
     }
 
+    board.numBombs = boardNumBombs(&board);
+
     printBoardInfo(&board);
     printBoard(&board, true);
     printBoard(&board, false);

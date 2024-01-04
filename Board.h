@@ -203,6 +203,17 @@ void boardResetTileStates(Board *board)
             board->tile[x][y].state = S_TILE;
 }
 
+uint boardNumBombs(Board *board)
+{
+    uint total = 0;
+    for(int y = 0; y < board->len.y; y++){
+        for(int x = 0; x < board->len.x; x++){
+            total += board->tile[x][y].isBomb;
+        }
+    }
+    return total;
+}
+
 uint boardRemaining(Board *board)
 {
     uint total = 0;
