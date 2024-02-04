@@ -111,7 +111,7 @@ void drawBoard(Board *board)
     }
 
     if(getTicks() < board->hint.showUntil){
-        setColor(RED);
+        setColor(board->hint.action == S_NUM?BLUE:RED);
         fillCircleCoord(coordAddi(tileMousePos(board->scale, board->off, iC(board->hint.pos.x, board->hint.pos.y)), board->scale/2), board->scale/2);
     }
 }
