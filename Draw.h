@@ -109,6 +109,11 @@ void drawBoard(Board *board)
             }
         }
     }
+
+    if(getTicks() < board->hint.showUntil){
+        setColor(RED);
+        fillCircleCoord(coordAddi(tileMousePos(board->scale, board->off, iC(board->hint.pos.x, board->hint.pos.y)), board->scale/2), board->scale/2);
+    }
 }
 
 #endif /* end of include guard: DRAW_H */

@@ -244,7 +244,6 @@ void boardRngBombs(Board *board, const Coord tpos)
 }
 
 volatile _Atomic int *done;
-
 void* boardPlaceBombsThread(void *voidData)
 {
     ThreadData *data = voidData;
@@ -252,8 +251,9 @@ void* boardPlaceBombsThread(void *voidData)
     const Coord tpos = data->tpos;
     Tile **tile = board->tile;
     ull n = 0;
+    // const uint threadStart = getTicks();
     do{
-        for(uint i = 0; i < 50; i++){
+        for(uint i = 0; i < 100; i++){
             for(int x = 0; x < board->len.x; x++)
                 memset(tile[x], 0, board->len.y * sizeof(Tile));
             board->state = BS_FIRST;
@@ -288,12 +288,14 @@ void* boardPlaceBombsThread(void *voidData)
                 if(atomic_load(done) != -1)
                     return NULL;
                 atomic_store(done, data->index);
-                printf("Storing %i\n", data->index);
+                printf("Thread[%i] solved on iter %llu\n", data->index, n*100+i);
                 return NULL;
             }
         }
         n++;
-        printf("Thread[%i]: %llu\n", data->index, n*50);
+        printf("Thread[%i]: %llu\n", data->index, n*100);
+        // if(n == 100)
+            // printf("Thread[%i] %u seconds to 20k\n", data->index, (getTicks()-threadStart)/1000);
     }while(atomic_load(done) == -1);
     return NULL;
 }

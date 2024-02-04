@@ -160,22 +160,7 @@ bool satSolve(Board *board)
 {
     for(int y = 0; y < board->len.y; y++){
         for(int x = 0; x < board->len.x; x++){
-            // uint adjTile = 0;
-            // uint adjFlag = 0;
             const Coord pos = {.x = x, .y = y};
-            // for(int yo = -1; yo <= 1; yo++){
-            //     for(int xo = -1; xo <= 1; xo++){
-            //         const Coord adj = {.x = x + xo, .y = y + yo};
-            //         if(
-            //             (adj.x != x || adj.y != y) &&
-            //             adj.x >= 0 && adj.y >= 0 &&
-            //             adj.x < len.x && adj.y < len.y
-            //         ){
-            //             adjTile += tile[adj.x][adj.y].state == S_TILE;
-            //             adjFlag += tile[adj.x][adj.y].state == S_FLAG;
-            //         }
-            //     }
-            // }
             if(
                 board->tile[x][y].state == S_NUM &&
                 board->tile[x][y].num &&
@@ -208,29 +193,6 @@ bool solve(Board *board)
     bool progress;
     const Length len = board->len;
     Tile **tile = board->tile;
-    // uint **adjTile = calloc(len.y, sizeof(uint*));
-    // uint **adjFlag = calloc(len.y, sizeof(uint*));
-    // for(int y = 0; y < len.y; y++){
-    //     adjTile[y] = calloc(len.x, sizeof(uint));
-    //     adjFlag[y] = calloc(len.x, sizeof(uint));
-    // }
-    // for(int y = 0; y < len.y; y++){
-    //     for(int x = 0; x < len.x; x++){
-    //         const Coord pos = {.x = x, .y = y};
-    //         adjTile[pos.x][pos.y] = 8;
-    //         for(int yo = -1; yo <= 1; yo++){
-    //             for(int xo = -1; xo <= 1; xo++){
-    //                 const Coord adj = {.x = pos.x+xo, .y = pos.y+yo};
-    //                 adjTile[pos.x][pos.y] -= (
-    //                     (adj.x != pos.x || adj.y != pos.y) &&
-    //                     adj.x >= 0 && adj.y >= 0 &&
-    //                     adj.x < len.x && adj.y < len.y &&
-    //                     tile[adj.x][adj.y] == S_NUM
-    //                 );
-    //             }
-    //         }
-    //     }
-    // }
     do{
         progress = false;
         for(int y = 0; y < len.y; y++){
@@ -269,8 +231,8 @@ bool solve(Board *board)
                         }
                     }
 
-                    if(board->type == B_SAT && tile[x][y].num == 2)
-                        progress |= clear121(board, pos);
+                    // if(board->type == B_SAT && tile[x][y].num == 2)
+                        // progress |= clear121(board, pos);
 
                 }
             }
@@ -284,6 +246,114 @@ bool solve(Board *board)
             if(!board->tile[x][y].isBomb && board->tile[x][y].state != S_NUM)
                 return false;
     return true;
+}
+
+Hint hintFindSat(Board *board)
+{
+    for(int y = 0; y < board->len.y; y++){
+        for(int x = 0; x < board->len.x; x++){
+            const Coord pos = {.x = x, .y = y};
+            if(
+                board->tile[x][y].state == S_NUM &&
+                board->tile[x][y].num &&
+                adjTileState(board, pos, S_FLAG) + 1 == board->tile[x][y].num
+            ){
+                for(int yo = -1; yo <= 1; yo++){
+                    for(int xo = -1; xo <= 1; xo++){
+                        const Coord adj = iC(pos.x+xo, pos.y+yo);
+                        if(
+                            !coordSame(pos, adj) &&
+                            validTilePos(adj, board->len) &&
+                            board->tile[adj.x][adj.y].state == S_TILE
+                        ){
+                            board->tile[adj.x][adj.y].state = S_QEST;
+                            if(reductioAdAbsurdum(board)){
+                                return (Hint){
+                                    .showUntil = getTicks()+2000,
+                                    .pos = adj,
+                                    .action = S_NUM
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    panic("Could not find hit after SAT solve");
+    return (Hint){0};
+}
+
+Hint hintFind(Board *board)
+{
+    const Length len = board->len;
+    Tile **tile = board->tile;
+    for(int y = 0; y < len.y; y++){
+        for(int x = 0; x < len.x; x++){
+            if(tile[x][y].state == S_NUM && tile[x][y].num){
+                uint adjTile = 0;
+                uint adjFlag = 0;
+                const Coord pos = {.x = x, .y = y};
+                for(int yo = -1; yo <= 1; yo++){
+                    for(int xo = -1; xo <= 1; xo++){
+                        const Coord adj = {.x = x + xo, .y = y + yo};
+                        if(
+                            (adj.x != x || adj.y != y) &&
+                            adj.x >= 0 && adj.y >= 0 &&
+                            adj.x < len.x && adj.y < len.y
+                        ){
+                            adjTile += tile[adj.x][adj.y].state == S_TILE;
+                            adjFlag += tile[adj.x][adj.y].state == S_FLAG;
+                        }
+                    }
+                }
+                if(adjTile <= tile[x][y].num - adjFlag){
+                    for(int yo = -1; yo <= 1; yo++){
+                        for(int xo = -1; xo <= 1; xo++){
+                            const Coord adj = iC(pos.x+xo, pos.y+yo);
+                            if(
+                                coordSame(pos, adj) ||
+                                !validTilePos(adj, board->len) ||
+                                board->tile[adj.x][adj.y].state != S_TILE
+                            )
+                                continue;
+
+                            return (Hint){
+                                .showUntil = getTicks()+2000,
+                                .pos = adj,
+                                .action = S_FLAG
+                            };
+                        }
+                    }
+                }
+
+                if(adjFlag == tile[x][y].num){
+                    for(int yo = -1; yo <= 1; yo++){
+                        for(int xo = -1; xo <= 1; xo++){
+                            const Coord adj = iC(pos.x+xo, pos.y+yo);
+                            if(
+                                !coordSame(pos, adj) &&
+                                validTilePos(adj, board->len) &&
+                                board->tile[adj.x][adj.y].state == S_TILE
+                            ){
+                                if(board->tile[adj.x][adj.y].isBomb){
+                                    printDecalsPos(board, adj);
+                                    panic("Cleared adj bomb at: (%i,%i)", adj.x, adj.y);
+                                }
+                                return (Hint){
+                                    .showUntil = getTicks()+2000,
+                                    .pos = adj,
+                                    .action = S_NUM
+                                };
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+    return hintFindSat(board);
 }
 
 #endif /* end of include guard: SOLVE_H */

@@ -23,7 +23,6 @@ const char TileStateChar[S_N] = {
     '?',
     'S'
 };
-
 typedef struct{
     bool isBomb;
     uint num;
@@ -41,7 +40,6 @@ const char *BoardTypeStr[B_N] = {
     "B_ADJ",
     "B_SAT"
 };
-
 typedef enum{
     BS_MENU,
     BS_FIRST,
@@ -65,7 +63,6 @@ typedef enum{
     A_CHEAT,
     A_ERR
 }ArgType;
-
 typedef struct Arg{
     ArgType type;
     union{
@@ -77,6 +74,13 @@ typedef struct Arg{
 }Arg;
 
 typedef struct{
+    uint showUntil;
+    Coord pos;
+    TileState action;
+}Hint;
+
+typedef struct{
+    Hint hint;
     uint saveNum;
     bool rescale;
     Length winLen;
@@ -99,7 +103,6 @@ typedef struct{
     Board board;
     Coord tpos;
     int index;
-    // volatile _Atomic int *done;
 }ThreadData;
 
 #endif /* end of include guard: TYPES_H */

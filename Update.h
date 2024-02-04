@@ -161,11 +161,16 @@ void boardUpdate(Board *board)
                 default:
                     break;
             }
+
             if(boardRemaining(board) == 0){
                 printf("You win!\n");
                 boardFree(board);
                 exit(EXIT_SUCCESS);
                 board->state = BS_FIRST;
+            }
+
+            if(keyPressed(SDL_SCANCODE_H)){
+                board->hint = hintFind(board);
             }
             break;
         default:
